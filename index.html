@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>centrois</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap');
+
+:root {
+  --red: #ff3b30;
+  --cyan: #05d9e8;
+  --ink: #0d0a09;
+  --cream: #f0e6d8;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width:100%; height:100%;
+  overflow:hidden;
+  background: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
+  color: var(--cream);
+  -webkit-user-select: none; user-select: none;
+}
+
+/* ── Background ── */
+#bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: url('assets/IMG_1771.jpeg') center/cover no-repeat;
+  filter: brightness(0.25) saturate(0.4) contrast(1.2) blur(1px);
+}
+#bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 0%, rgba(13,10,9,0.85) 70%, var(--ink) 100%);
+}
+
+/* ── Animated Grain ── */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  animation: drift 8s linear infinite;
+}
+@keyframes drift {
+  0% { background-position: 0 0; }
+  100% { background-position: 200px 200px; }
+}
+
+/* ── Canvas ── */
+#canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  cursor: grab;
+  overflow: hidden;
+}
+#canvas.grabbing { cursor: grabbing; }
+
+#world {
+  position: absolute;
+  top:0; left:0;
+  width: 6000px;
+  height: 6000px;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* ── Portals (organic red blobs) ── */
+.portal {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Amorphous blob shape */
+.portal::before {
+  content: '';
+  position: absolute;
+  inset: -30px;
+  border-radius: 52% 48% 58% 42% / 48% 55% 45% 52%;
+  background: rgba(255, 59, 48, 0.05);
+  border: 1px solid rgba(255, 59, 48, 0.18);
+  transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.portal:hover::before {
+  background: rgba(255, 59, 48, 0.10);
+  border-color: rgba(255, 59, 48, 0.35);
+  box-shadow: 0 0 70px rgba(255, 59, 48, 0.18), inset 0 0 40px rgba(255, 59, 48, 0.06);
+  border-radius: 47% 53% 43% 57% / 56% 46% 54% 44%;
+}
+
+.portal .name {
+  position: relative;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--cream);
+  text-shadow: 0 0 20px rgba(5, 217, 232, 0.3);
+  transition: all 0.4s ease;
+}
+.portal .desc {
+  position: relative;
+  font-size: 11px;
+  font-weight: 300;
+  color: rgba(240, 230, 216, 0.5);
+  margin-top: 8px;
+  letter-spacing: 0.08em;
+  max-width: 160px;
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.4s ease;
+}
+.portal:hover .desc { opacity: 1; transform: translateY(0); }
+.portal:hover .name {
+  color: var(--cyan);
+  text-shadow: 0 0 30px rgba(5, 217, 232, 0.5);
+}
+
+/* Center portal */
+.portal.center { width: 280px; height: 280px; }
+.portal.center .name { font-size: 22px; letter-spacing: 0.35em; font-weight: 700; }
+.portal.center::before {
+  background: rgba(255, 59, 48, 0.10);
+  border: 1px solid rgba(255, 59, 48, 0.30);
+  box-shadow: 0 0 80px rgba(255, 59, 48, 0.16);
+}
+
+/* Level 0 */
+.portal.l0 { width: 200px; height: 200px; }
+
+/* Child portals */
+.portal.child {
+  width: 170px; height: 170px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.portal.child.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Lines */
+.connections {
+  position: absolute;
+  top:0; left:0;
+  width:100%; height:100%;
+  pointer-events: none;
+  z-index: -1;
+}
+.connections line {
+  stroke: rgba(255, 59, 48, 0.12);
+  stroke-width: 1;
+  stroke-dasharray: 4 8;
+}
+
+/* ── UI ── */
+#ui { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
+#ui > * { pointer-events: auto; }
+
+.back {
+  position: fixed;
+  top: 24px; left: 24px;
+  background: transparent;
+  border: 1px solid rgba(240, 230, 216, 0.2);
+  color: var(--cream);
+  padding: 10px 22px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+  transition: all 0.4s ease;
+  backdrop-filter: blur(10px);
+}
+.back.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.back:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 20px rgba(5, 217, 232, 0.2); }
+
+.crumb {
+  position: fixed;
+  top: 24px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(240, 230, 216, 0.4);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.crumb.show { opacity: 1; }
+
+.hint {
+  position: fixed;
+  bottom: 28px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: rgba(240, 230, 216, 0.35);
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+.hint.show { opacity: 1; }
+
+@media (max-width: 768px) {
+  .portal.center { width: 200px; height: 200px; }
+  .portal.center .name { font-size: 16px; }
+  .portal.l0 { width: 150px; height: 150px; }
+  .portal.l0 .name { font-size: 11px; }
+  .portal.child { width: 130px; height: 130px; }
+}
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+<div class="grain"></div>
+
+<div id="canvas">
+  <div id="world">
+    <svg class="connections" id="connections"></svg>
+    <!-- Portals injected by JS with computed cluster layout -->
+  </div>
+</div>
+
+<div id="ui">
+  <button class="back" id="back">← back</button>
+  <div class="crumb" id="crumb">centrois</div>
+  <div class="hint show" id="hint">click to zoom in · drag to pan · scroll to zoom</div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('canvas');
+  const world = document.getElementById('world');
+  const back = document.getElementById('back');
+  const crumb = document.getElementById('crumb');
+  const hint = document.getElementById('hint');
+  const connections = document.getElementById('connections');
+
+  const WC = 3000; // world center X & Y
+
+  // ── Tree structure ──
+  // Each node: { id, name, desc, level, children: [...] }
+  const tree = {
+    id:'centrois', name:'centrois', desc:'troy von breitenstein', level:0,
+    children: [
+      { id:'airheads', name:'airheads', desc:'1-of-1 art surf mats', level:0, children:[] },
+      { id:'works', name:'works', desc:'portfolio hub', level:0, children:[
+        { id:'boarding', name:'boarding', desc:'surf videos', level:1, children:[] },
+        { id:'mixed-media', name:'mixed media', desc:'digital + threads + visionary', level:1, children:[
+          { id:'digital-art', name:'digital art', desc:'psychedelic visuals', level:2, children:[] },
+          { id:'threads', name:'threads', desc:'sewn art pieces', level:2, children:[] },
+          { id:'visionary', name:'visionary', desc:'steiner / anthroposophy', level:2, children:[] },
+          { id:'odd-creations', name:'odd & creations', desc:'salt box, experiments', level:2, children:[] }
+        ]},
+        { id:'photography', name:'photography', desc:'trips, stories, frames', level:1, children:[] }
+      ]},
+      { id:'bio', name:'bio', desc:'edgwalker / artist', level:0, children:[] },
+      { id:'ponderings', name:'ponderings', desc:'philosophical writings', level:0, children:[] }
+    ]
+  };
+
+  const nodes = {};   // id -> {el, x, y, size, nodeData, parentId}
+  const parentOf = {};
+
+  // ── Layout: arrange nodes in rings around parents ──
+  function layout() {
+    const R = { 0: 360, 1: 320, 2: 280 };  // ring radius per level
+    const S = { 0: 200, 1: 170, 2: 170, center: 280 }; // sizes
+
+    function place(node, cx, cy, angle, depth) {
+      const size = node.id === 'centrois' ? S.center : (S[node.level] || 170);
+      let x, y;
+      if (node.id === 'centrois') {
+        x = WC - size/2; y = WC - size/2;
+      } else {
+        const r = R[node.level] || 300;
+        x = cx - size/2 + Math.cos(angle) * r;
+        y = cy - size/2 + Math.sin(angle) * r;
+      }
+
+      const el = document.createElement('div');
+      el.className = 'portal ' + (node.id==='centrois'?'center':(node.level===0?'l0':'child'));
+      el.dataset.id = node.id;
+      el.dataset.level = node.level;
+      el.innerHTML = `<div class="name">${node.name}</div><div class="desc">${node.desc}</div>`;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      world.appendChild(el);
+
+      const center = { x: x + size/2, y: y + size/2 };
+      nodes[node.id] = { el, x, y, cx: center.x, cy: center.y, size, level: node.level };
+
+      if (node.id !== 'centrois') parentOf[node.id] = 'centrois';
+
+      // Children around this node (skip for centrois which fans to l0)
+      const kids = node.children || [];
+      if (kids.length) {
+        kids.forEach((kid, i) => {
+          const a = (i / kids.length) * Math.PI * 2 + (node.id==='centrois' ? -0.6 : 0);
+          parentOf[kid.id] = node.id;
+          place(kid, center.x, center.y, a, depth+1);
+        });
+      }
+    }
+
+    place(tree, 0, 0, 0, 0);
+  }
+
+  layout();
+
+  // ── Camera ──
+  let cam = { x: 0, y: 0, z: 1 };
+  let animating = false;
+  let level = 0;
+  let path = ['centrois'];
+
+  let dragging = false;
+  let dragStart = { x:0, y:0 };
+  let camStart = { x:0, y:0 };
+
+  function apply() {
+    world.style.transform = `translate(${cam.x * cam.z}px, ${cam.y * cam.z}px) scale(${cam.z})`;
+  }
+
+  // Frame a cluster (a node + its children) in the viewport
+  function frame(id) {
+    const nd = nodes[id];
+    const kids = (document.querySelectorAll('.portal.child.visible'));
+    // Collect the node + its visible children
+    const pts = [{x: nd.cx, y: nd.cy}];
+    // Add children of this node that are visible
+    Object.keys(nodes).forEach(k => {
+      if (parentOf[k] === id && nodes[k].el.classList.contains('visible')) {
+        pts.push({x: nodes[k].cx, y: nodes[k].cy});
+      }
+    });
+    // Bounding box of points with padding
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    pts.forEach(p => {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    });
+    const pad = 220;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const cw = maxX - minX, ch = maxY - minY;
+    const vw = window.innerWidth, vh = window.innerHeight;
+
+    // Scale to fit cluster with margin, capped so we don't go absurdly deep
+    const z = Math.min((vw * 0.9) / cw, (vh * 0.9) / ch, 9);
+    const ccx = (minX + maxX) / 2, ccy = (minY + maxY) / 2;
+
+    // Camera position that puts cluster center at viewport center
+    return { x: (vw/2)/z - ccx, y: (vh/2)/z - ccy, z };
+  }
+
+  // Fit whole board on load
+  function fitAll() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    Object.keys(nodes).forEach(k => {
+      const n = nodes[k];
+      if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y; if (n.y > maxY) maxY = n.y;
+    });
+    minX -= 200; minY -= 200; maxX += 200; maxY += 200;
+    const cw = maxX - minX, ch = maxY - minY;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const z = Math.min((vw * 0.92) / cw, (vh * 0.92) / ch);
+    const ccx = (minX + maxX) / 2, ccy = (minY + maxY) / 2;
+    return { x: (vw/2)/z - ccx, y: (vh/2)/z - ccy, z };
+  }
+
+  function easeTo(target, dur = 900) {
+    if (animating) return;
+    animating = true;
+    const sx = cam.x, sy = cam.y, sz = cam.z;
+    const t0 = performance.now();
+    function tick(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      const e = 1 - Math.pow(1 - t, 4);
+      cam.x = sx + (target.x - sx) * e;
+      cam.y = sy + (target.y - sy) * e;
+      cam.z = sz + (target.z - sz) * e;
+      apply();
+      if (t < 1) requestAnimationFrame(tick);
+      else { animating = false; updateVis(); }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function zoomTo(id) {
+    const nd = nodes[id];
+    // update path & level BEFORE framing so children show
+    if (!path.includes(id)) path.push(id);
+    else path = path.slice(0, path.indexOf(id)+1);
+    level = nd.level + 1;
+    updateVis();
+    updateUI();
+    // frame AFTER children are visible
+    requestAnimationFrame(() => {
+      const target = frame(id);
+      easeTo(target);
+    });
+  }
+
+  function zoomOut() {
+    if (path.length <= 1) {
+      path = ['centrois']; level = 0;
+      updateVis(); updateUI();
+      easeTo(fitAll());
+    } else {
+      path.pop();
+      const pid = path[path.length-1];
+      level = Math.max(level - 1, 0);
+      updateVis(); updateUI();
+      easeTo(frame(pid));
+    }
+  }
+
+  function updateUI() {
+    back.classList.toggle('show', path.length > 1);
+    if (path.length > 1) {
+      crumb.textContent = path.join(' → ');
+      crumb.classList.add('show');
+    } else crumb.classList.remove('show');
+    hint.classList.remove('show');
+  }
+
+  function updateVis() {
+    document.querySelectorAll('.portal').forEach(p => {
+      const lv = parseInt(p.dataset.level || '0');
+      if (lv === 0) return;
+      const pid = parentOf[p.dataset.id];
+      const active = path.includes(pid);
+      if (active && lv <= level + 1) p.classList.add('visible');
+      else p.classList.remove('visible');
+    });
+    drawLines();
+  }
+
+  function drawLines() {
+    let s = '';
+    document.querySelectorAll('.portal').forEach(p => {
+      const pid = parentOf[p.dataset.id];
+      if (!pid) return;
+      const par = nodes[pid];
+      const cur = nodes[p.dataset.id];
+      if (!par || !cur) return;
+      if (p.classList.contains('child') && !p.classList.contains('visible')) return;
+      s += `<line x1="${par.cx}" y1="${par.cy}" x2="${cur.cx}" y2="${cur.cy}" />`;
+    });
+    connections.innerHTML = s;
+  }
+
+  // ── Events ──
+  document.querySelectorAll('.portal').forEach(p => {
+    p.addEventListener('click', e => {
+      e.stopPropagation();
+      if (dragging) return;
+      zoomTo(p.dataset.id);
+    });
+  });
+
+  back.addEventListener('click', zoomOut);
+
+  canvas.addEventListener('mousedown', e => {
+    dragging = false;
+    dragStart = { x: e.clientX, y: e.clientY };
+    camStart = { x: cam.x, y: cam.y };
+    canvas.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', e => {
+    if (e.buttons !== 1) return;
+    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragging = true;
+    cam.x = camStart.x + dx / cam.z;
+    cam.y = camStart.y + dy / cam.z;
+    apply();
+  });
+  window.addEventListener('mouseup', () => canvas.classList.remove('grabbing'));
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const speed = 0.001;
+    const nz = Math.max(0.5, Math.min(15, cam.z - e.deltaY * speed));
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left)/cam.z - cam.x;
+    const my = (e.clientY - rect.top)/cam.z - cam.y;
+    cam.x = -mx + (mx + cam.x)*(cam.z/nz);
+    cam.y = -my + (my + cam.y)*(cam.z/nz);
+    cam.z = nz;
+    apply();
+  }, { passive:false });
+
+  let lastD = 0, lastC = {x:0,y:0};
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      camStart = { x: cam.x, y: cam.y };
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX-e.touches[1].clientX, dy = e.touches[0].clientY-e.touches[1].clientY;
+      lastD = Math.hypot(dx,dy);
+      lastC = { x:(e.touches[0].clientX+e.touches[1].clientX)/2, y:(e.touches[0].clientY+e.touches[1].clientY)/2 };
+    }
+  }, { passive:false });
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const dx = e.touches[0].clientX-dragStart.x, dy = e.touches[0].clientY-dragStart.y;
+      cam.x = camStart.x + dx/cam.z; cam.y = camStart.y + dy/cam.z; apply();
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX-e.touches[1].clientX, dy = e.touches[0].clientY-e.touches[1].clientY;
+      const dist = Math.hypot(dx,dy); const sc = dist/lastD; lastD = dist;
+      const nz = Math.max(0.5, Math.min(15, cam.z*sc));
+      const rect = canvas.getBoundingClientRect();
+      const mx = (lastC.x-rect.left)/cam.z - cam.x; const my = (lastC.y-rect.top)/cam.z - cam.y;
+      cam.x = -mx + (mx+cam.x)*(cam.z/nz); cam.y = -my + (my+cam.y)*(cam.z/nz); cam.z = nz; apply();
+    }
+  }, { passive:false });
+
+  // Init
+  easeTo(fitAll());
+  drawLines();
+  window.addEventListener('resize', () => { easeTo(fitAll()); drawLines(); });
+})();
+</script>
+</body>
+</html>
